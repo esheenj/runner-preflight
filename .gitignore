@@ -1,0 +1,18 @@
+# Locally observed runner facts may be sensitive; never commit them.
+observed.json
+observed-*.json
+*.observed.json
+
+# Rust and Python generated build/runtime state
+**/target/
+__pycache__/
+.pytest_cache/
+.venv/
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+local-data/
+dist/

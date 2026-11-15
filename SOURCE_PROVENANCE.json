@@ -1,0 +1,83 @@
+{
+  "files": [
+    {
+      "bytes": 2649,
+      "path": ".github/workflows/ci.yml",
+      "sha256": "a2bf7c157e6d8e9b84023aaebeeb5cb3978308046e7aca388c4d480a25d09903"
+    },
+    {
+      "bytes": 1081,
+      "path": "LICENSE",
+      "sha256": "d8a43c72497168ad18c1318f55174125baf131bf670f56ca6ef6ff7b4f217a05"
+    },
+    {
+      "bytes": 4783,
+      "path": "README.md",
+      "sha256": "a04c12836af01672958eaff72855d2ab1019baf813889b20539c315308f9d8bf"
+    },
+    {
+      "bytes": 516,
+      "path": "fixtures/hold-arch.json",
+      "sha256": "481a4d4425bedbcb3154d7494a7dc2f705bd4855b19579a03e0d93123dde2a1b"
+    },
+    {
+      "bytes": 257,
+      "path": "fixtures/job-linux-arm64.json",
+      "sha256": "b9e0d0c142059ae97aa9fc19347bc634a579fc3b7acc033135738933b97e8f5f"
+    },
+    {
+      "bytes": 256,
+      "path": "fixtures/job-linux-x64.json",
+      "sha256": "0da943cd39ee28eb8c570b9a30fb415926e1fc7b773be67a5878d312e566fc5b"
+    },
+    {
+      "bytes": 596,
+      "path": "fixtures/ready-x64.json",
+      "sha256": "978ce19ba06442866f02bd7bee6bc8b2e03f6d642cc7eedbe5b819a535c3a184"
+    },
+    {
+      "bytes": 467,
+      "path": "fixtures/warn-disk.json",
+      "sha256": "66e20faa3b6d8e08219e50267c8d3394aff8f912a878855a4663593abe8f0f70"
+    },
+    {
+      "bytes": 2674,
+      "path": "rust/Cargo.lock",
+      "sha256": "282aa9f1036443a132a7b480ecc262b47efc6dc3a17474aa4d99069094e2281f"
+    },
+    {
+      "bytes": 212,
+      "path": "rust/Cargo.toml",
+      "sha256": "6e88774fa51d5884108ec2b19ccbf6ec82270945478cae38d46baf46ad3a5eb9"
+    },
+    {
+      "bytes": 385,
+      "path": "rust/deny.toml",
+      "sha256": "5bcab78d9e4579162c5065b2c83c6d14e9a7acf783864ff6ef4cd8e0d0aece30"
+    },
+    {
+      "bytes": 87,
+      "path": "rust/rust-toolchain.toml",
+      "sha256": "6b1cf8341d9a08d76c6deb1e9df90a0b208d0ef0d00ee05e0173e9cd4f0f425d"
+    },
+    {
+      "bytes": 10145,
+      "path": "rust/src/main.rs",
+      "sha256": "f6930ced245e808c46e6d5a0fbbcb39418d6a8a7c52afdf201c251e5e3471a92"
+    },
+    {
+      "bytes": 7051,
+      "path": "scripts/collect_linux_runner.py",
+      "sha256": "b249ee7edc3c09af50487d61f5c01c4b285e3aa91ffc18b85295e2b48b6c0c46"
+    },
+    {
+      "bytes": 6812,
+      "path": "tests/test_runner_preflight_collector.py",
+      "sha256": "666c150761ec3432cd36ce016821d43703ba4c22f73d0d5d6081788102f416a4"
+    }
+  ],
+  "schema": "runner-preflight-clean-export-v1",
+  "scope": "Public standalone source snapshot; no private project content or git history",
+  "source_commit": "ee53cd7bd74ed193b1839e5d5654bbca4d3df2e3",
+  "source_repository": "esheenj/compound-intelligence-starter"
+}
