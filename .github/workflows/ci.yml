@@ -62,6 +62,11 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
+          fetch-depth: 0
+      - name: Independently verify immutable public v0.2.0 import
+        run: |
+          python3 -m unittest discover -s tests -p test_import_provenance.py -v
+          python3 scripts/verify_import_provenance.py
       - name: Check advisories, licenses and sources
         uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25
         with:
