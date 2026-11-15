@@ -4,19 +4,28 @@ Offline, read-only CI runner requirement matching with deterministic JSON report
 
 Runner Preflight evaluates a **supplied** inventory against a declared job specification. It **does not** inspect a host automatically, register CI runners, diagnose GitHub scheduling or billing, install software, access credentials, or repair a server. It does not grant financial or agent execution authority.
 
-## Quick start
+## Try it in a minute
 
-Install Rust 1.100.0 with Cargo on Linux x86-64 or ARM64. From the extracted repository root:
+For developers who want to know whether a **declared CI job** matches a runner inventory before assigning it, clone this standalone repository on Linux x86-64 or ARM64 with Rust 1.100.0 and Cargo:
+
+```sh
+git clone https://github.com/esheenj/runner-preflight.git
+cd runner-preflight
+cargo run --manifest-path rust/Cargo.toml --locked -- inspect --input fixtures/ready-x64.json --format json
+```
+
+Expected JSON contains `"status":"READY"`. To see how a missing requirement produces an actionable result, run `cargo run --manifest-path rust/Cargo.toml --locked -- inspect --input fixtures/hold-arch.json --format json`; this exits with code 2 (`HOLD`) rather than silently approving the job. The [original offline playground](https://esheenj.github.io/compound-intelligence-starter/runner-preflight.html) lets developers try the same synthetic contract without installing Rust; it is a JavaScript reference, not a host inspector.
+
+To validate source and its Rust dependencies:
 
 ```sh
 cd rust
 cargo fmt --all -- --check
 cargo clippy --all-targets --locked -- -D warnings
 cargo test --locked
-cargo run --locked -- inspect --input ../fixtures/ready-x64.json --format json
 ```
 
-Expected report status: `READY`. Other supplied synthetic fixtures produce `WARN` or `HOLD`. An incompatible inventory is a diagnostic finding, not permission to change the machine.
+The tool cannot register runners, attest a host, access your GitHub account, fix billing or resolve job scheduling by itself. `READY` means only that **the supplied facts** meet the supplied requirements.
 
 ## Optional: observe your own Linux runner
 
@@ -54,8 +63,8 @@ The input JSON (maximum 64 KiB, regular file only, no symlinks) has `schema: "ru
 
 ## Independent source and verification
 
-This release-ready source tree was assembled from the explicitly allowlisted, original, **public** files in [Compound Intelligence Starter](https://github.com/esheenj/compound-intelligence-starter/tree/main/experiments/runner_preflight). The export contains no history, unrelated source, private instructions or account credentials. See `SOURCE_PROVENANCE.json` for the exact parent source commit and hashes of each included file. `rust/Cargo.lock` is committed. The included `.github/workflows/ci.yml` independently tests x86-64 and ARM64 and checks dependency advisories, licenses and sources.
+The [standalone v0.2.0 import](https://github.com/esheenj/runner-preflight/commit/ea0c21d1a5da31fb59cafb31324f413256309739) originated from explicitly allowlisted, original, **public** files in [Compound Intelligence Starter](https://github.com/esheenj/compound-intelligence-starter/tree/main/experiments/runner_preflight). `SOURCE_PROVENANCE.json` describes that **immutable import snapshot**, not every future commit in this evolving repository. `scripts/verify_import_provenance.py` independently checks the original Git blobs, hashes and sizes in CI; normal README and workflow improvements do not rewrite the import evidence.
 
-MIT licensed (see `LICENSE`). Do not advertise an executable as signed, audited for all vulnerabilities, verified as running on Oracle, or commercially supported merely because source tests pass. The source archive can be imported into a new, functionally named GitHub repository after normal repository creation and final release checks.
+The [independent repository CI](https://github.com/esheenj/runner-preflight/actions/runs/43741752446) already passed Linux x86-64 and ARM64 Rust qualification and its own dependency advisory/license/source checks for the initial import. Each subsequent source revision needs its own passing CI before release. The earlier [v0.2.0 preview binaries](https://github.com/esheenj/compound-intelligence-starter/releases/tag/runner-preflight-v0.2.0) remain hosted in the upstream research repository; **no standalone-repository binary release is claimed here**.
 
-No added recurring infrastructure spend or paid dependency is required.
+MIT licensed (see `LICENSE`). Read [contribution guidelines](CONTRIBUTING.md) and [security reporting guidance](SECURITY.md) before sharing a bug report. Do not advertise an executable as signed, certified, actually inspecting an Oracle host, or commercially supported merely because source tests pass. No additional recurring infrastructure spend or paid dependency is required.
