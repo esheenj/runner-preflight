@@ -1,0 +1,237 @@
+name: Standalone Runner Preflight versioned release
+on:
+  workflow_run:
+    workflows: [Rust CLI qualification]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  preflight:
+    if: >-
+      ${{ github.repository == 'esheenj/runner-preflight' &&
+          github.event.workflow_run.event == 'push' &&
+          github.event.workflow_run.conclusion == 'success' &&
+          github.event.workflow_run.head_branch == 'main' &&
+          github.event.workflow_run.head_repository.full_name == 'esheenj/runner-preflight' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      publish: ${{ steps.check.outputs.publish }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
+      - name: Check exact qualified main, immutable tag and version
+        id: check
+        env:
+          SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          [[ "$SOURCE_SHA" =~ ^[a-f0-9]{40}$ ]]
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          test "$(git ls-remote origin refs/heads/main | cut -f1)" = "$SOURCE_SHA"
+          grep -Fxq 'version = "0.3.0"' rust/Cargo.toml
+          grep -A1 '^name = "runner-preflight"$' rust/Cargo.lock | grep -Fxq 'version = "0.3.0"'
+          tag=v0.3.0
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            for asset in BUILD_INFO.txt SHA256SUMS runner-preflight-source.zip runner-preflight-linux-x86_64 runner-preflight-linux-aarch64; do
+              gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' | grep -Fxq "$asset"
+            done
+            echo "Existing immutable $tag retained; no new build or publication."
+            echo 'publish=false' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null 2>&1; then
+            echo "::error::Tag $tag exists without a complete release. HOLD for reconciliation."
+            exit 1
+          fi
+          echo 'publish=true' >> "$GITHUB_OUTPUT"
+
+  linux:
+    needs: [preflight]
+    if: ${{ needs.preflight.outputs.publish == 'true' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            arch: x86_64
+          - runner: ubuntu-24.04-arm
+            arch: aarch64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
+      - name: Recheck source, pinned compiler, locked tests and deterministic CLI
+        env:
+          SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
+          TARGET_ARCH: ${{ matrix.arch }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          test "$(uname -m)" = "$TARGET_ARCH"
+          cd rust
+          rustc --version
+          cargo --version
+          test "$(rustc --version | awk '{print $2}')" = '1.100.0'
+          test "$(cargo --version | awk '{print $2}')" = '1.100.0'
+          cargo fmt --all -- --check
+          cargo clippy --all-targets --locked -- -D warnings
+          cargo test --locked
+          cargo build --release --locked
+          ./target/release/runner-preflight inspect --input ../fixtures/ready-x64.json --format json | grep -Fq '"status":"READY"'
+          ./target/release/runner-preflight inspect --input ../fixtures/ready-x64.json --format github | grep -Fq '::notice title=Runner Preflight::READY'
+          set +e
+          ./target/release/runner-preflight inspect --input ../fixtures/warn-disk.json --format github > /tmp/preflight-warn.txt
+          warned=$?
+          ./target/release/runner-preflight inspect --input ../fixtures/hold-arch.json --format github > /tmp/preflight-hold.txt
+          held=$?
+          set -e
+          test "$warned" -eq 1
+          test "$held" -eq 2
+          grep -Fq '::warning title=Runner Preflight::DISK_HEADROOM_LOW' /tmp/preflight-warn.txt
+          grep -Fq '::error title=Runner Preflight::ARCH_MISMATCH' /tmp/preflight-hold.txt
+          cd ..
+          python3 -m unittest discover -s tests -p test_runner_preflight_collector.py -v
+          case "$TARGET_ARCH" in
+            aarch64) job=fixtures/job-linux-arm64.json ;;
+            x86_64) job=fixtures/job-linux-x64.json ;;
+          esac
+          python3 scripts/collect_linux_runner.py --job "$job" --workspace "$GITHUB_WORKSPACE" >/tmp/preflight-observed.json
+          rust/target/release/runner-preflight inspect --input /tmp/preflight-observed.json --format json | grep -Fq '"status":"READY"'
+          mkdir -p dist
+          cp rust/target/release/runner-preflight "dist/runner-preflight-linux-$TARGET_ARCH"
+          {
+            echo "Source commit: $SOURCE_SHA"
+            echo "Architecture: $TARGET_ARCH"
+            ( cd rust && rustc --version && cargo --version )
+          } > "dist/BUILD_INFO-$TARGET_ARCH.txt"
+      - name: Upload qualified architecture artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: runner-preflight-v0.3.0-${{ matrix.arch }}-${{ github.run_id }}
+          path: dist/
+          retention-days: 7
+          if-no-files-found: error
+
+  package:
+    needs: [preflight, linux]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
+      - name: Download same-run x86-64 binary
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: runner-preflight-v0.3.0-x86_64-${{ github.run_id }}
+          path: dist/x86_64
+      - name: Download same-run ARM64 binary
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: runner-preflight-v0.3.0-aarch64-${{ github.run_id }}
+          path: dist/aarch64
+      - name: Validate and assemble immutable release candidate
+        env:
+          SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          test "$(git ls-remote origin refs/heads/main | cut -f1)" = "$SOURCE_SHA"
+          for arch in x86_64 aarch64; do
+            test -s "dist/$arch/runner-preflight-linux-$arch"
+            grep -Fxq "Source commit: $SOURCE_SHA" "dist/$arch/BUILD_INFO-$arch.txt"
+            grep -Fxq "Architecture: $arch" "dist/$arch/BUILD_INFO-$arch.txt"
+            grep -Eq '^rustc 1[.]100[.]0 ' "dist/$arch/BUILD_INFO-$arch.txt"
+            grep -Eq '^cargo 1[.]100[.]0 ' "dist/$arch/BUILD_INFO-$arch.txt"
+          done
+          readelf -h dist/x86_64/runner-preflight-linux-x86_64 | grep -Fq 'Advanced Micro Devices X86-64'
+          readelf -h dist/aarch64/runner-preflight-linux-aarch64 | grep -Fq 'AArch64'
+          mkdir -p dist/release
+          cp dist/x86_64/runner-preflight-linux-x86_64 dist/release/
+          cp dist/aarch64/runner-preflight-linux-aarch64 dist/release/
+          git archive --format=zip --prefix=runner-preflight/ HEAD > dist/release/runner-preflight-source.zip
+          unzip -tq dist/release/runner-preflight-source.zip
+          {
+            echo "Source commit: $SOURCE_SHA"
+            echo 'Source: independent esheenj/runner-preflight GitHub main'
+            echo 'Linux x86-64:'
+            cat dist/x86_64/BUILD_INFO-x86_64.txt
+            echo 'Linux ARM64:'
+            cat dist/aarch64/BUILD_INFO-aarch64.txt
+          } > dist/release/BUILD_INFO.txt
+          ( cd dist/release && sha256sum runner-preflight-source.zip runner-preflight-linux-x86_64 runner-preflight-linux-aarch64 > SHA256SUMS )
+          ( cd dist/release && sha256sum --check SHA256SUMS )
+      - name: Upload exact-source release candidate
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: runner-preflight-v0.3.0-candidate-${{ github.run_id }}
+          path: dist/release/
+          retention-days: 7
+          if-no-files-found: error
+
+  publish:
+    needs: [preflight, package]
+    if: ${{ needs.preflight.outputs.publish == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    concurrency:
+      group: runner-preflight-standalone-v0.3.0-publication
+      cancel-in-progress: false
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
+      - name: Download only verified same-run candidate
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: runner-preflight-v0.3.0-candidate-${{ github.run_id }}
+          path: dist/release
+      - name: Verify source before publication and refuse tag rewrite
+        env:
+          SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          test "$(git ls-remote origin refs/heads/main | cut -f1)" = "$SOURCE_SHA"
+          ( cd dist/release && sha256sum --check SHA256SUMS )
+          grep -Fxq "Source commit: $SOURCE_SHA" dist/release/BUILD_INFO.txt
+          if git ls-remote --exit-code --tags origin refs/tags/v0.3.0 >/dev/null 2>&1; then
+            echo "::error::Target release tag already exists. Do not overwrite or move it."
+            exit 1
+          fi
+      - name: Publish the first standalone Linux preview release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          gh release create v0.3.0 \
+            dist/release/runner-preflight-linux-x86_64 \
+            dist/release/runner-preflight-linux-aarch64 \
+            dist/release/runner-preflight-source.zip \
+            dist/release/SHA256SUMS \
+            dist/release/BUILD_INFO.txt \
+            --target "$SOURCE_SHA" \
+            --title 'Runner Preflight v0.3.0 — standalone Linux preview' \
+            --notes-file RELEASE_NOTES.md \
+            --latest=false --prerelease
+          gh release view v0.3.0 --json url,tagName,isDraft,isPrerelease,assets
