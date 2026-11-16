@@ -43,6 +43,23 @@ jobs:
           test "$holding" -eq 2
           grep -q '"status":"WARN"' /tmp/runner-warn.json
           grep -q '"status":"HOLD"' /tmp/runner-hold.json
+      - name: Test GitHub Actions annotations and retain precise exit codes
+        run: |
+          set -euo pipefail
+          ./target/release/runner-preflight inspect --input ../fixtures/ready-x64.json --format github > /tmp/preflight-gh-ready.txt
+          grep -Fxq '::notice title=Runner Preflight::READY - Declared requirements match; no host attestation.' /tmp/preflight-gh-ready.txt
+          set +e
+          ./target/release/runner-preflight inspect --input ../fixtures/warn-disk.json --format github > /tmp/preflight-gh-warn.txt
+          warned=$?
+          ./target/release/runner-preflight inspect --input ../fixtures/hold-arch.json --format github > /tmp/preflight-gh-hold.txt
+          held=$?
+          set -e
+          test "$warned" -eq 1
+          test "$held" -eq 2
+          grep -Fq '::warning title=Runner Preflight::DISK_HEADROOM_LOW - ' /tmp/preflight-gh-warn.txt
+          grep -Fq '::error title=Runner Preflight::ARCH_MISMATCH - ' /tmp/preflight-gh-hold.txt
+          test "$(wc -l < /tmp/preflight-gh-ready.txt)" -eq 1
+          # Keep synthetic HOLD annotations out of live CI stdout; inspect files.
       - name: Validate read-only Linux observation with the extracted Rust binary
         working-directory: .
         run: |

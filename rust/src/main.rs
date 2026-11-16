@@ -54,6 +54,12 @@ enum Status {
     Hold,
 }
 
+#[derive(Clone, Copy, Debug)]
+enum OutputFormat {
+    Json,
+    GitHub,
+}
+
 #[derive(Debug, Serialize)]
 struct Finding {
     code: &'static str,
@@ -224,7 +230,38 @@ fn evaluate(input: &Inventory) -> Result<Report, &'static str> {
         findings,
     })
 }
-fn inspect(path: &Path) -> Result<u8, &'static str> {
+fn render_report(report: &Report, format: OutputFormat) -> Result<String, &'static str> {
+    match format {
+        OutputFormat::Json => {
+            serde_json::to_string(report).map_err(|_| "Output serialization failed")
+        }
+        OutputFormat::GitHub => {
+            // These workflow commands include only fixed codes and messages,
+            // never user-controlled inventory, names, paths or credentials.
+            // The format is opt-in and does not alter severity-based exit codes.
+            if report.findings.is_empty() {
+                return Ok(String::from(
+                    "::notice title=Runner Preflight::READY - Declared requirements match; no host attestation.",
+                ));
+            }
+            let mut lines = Vec::with_capacity(report.findings.len());
+            for finding in &report.findings {
+                let kind = match finding.severity {
+                    Status::Hold => "error",
+                    Status::Warn => "warning",
+                    Status::Ready => "notice",
+                };
+                lines.push(format!(
+                    "::{kind} title=Runner Preflight::{} - {}",
+                    finding.code, finding.message
+                ));
+            }
+            Ok(lines.join("\n"))
+        }
+    }
+}
+
+fn inspect(path: &Path, format: OutputFormat) -> Result<u8, &'static str> {
     // Refuse symlinks; no host probing, GitHub network access or privileged mutations.
     let info = fs::symlink_metadata(path).map_err(|_| "Input cannot be inspected")?;
     if !info.file_type().is_file() || info.len() > MAX_BYTES {
@@ -241,25 +278,27 @@ fn inspect(path: &Path) -> Result<u8, &'static str> {
         Status::Warn => 1,
         Status::Hold => 2,
     };
-    println!(
-        "{}",
-        serde_json::to_string(&report).map_err(|_| "Output serialization failed")?
-    );
+    println!("{}", render_report(&report, format)?);
     Ok(rc)
 }
 fn run() -> Result<u8, &'static str> {
     let mut a = std::env::args().skip(1);
     if a.next().as_deref() != Some("inspect") || a.next().as_deref() != Some("--input") {
-        return Err("Usage: runner-preflight inspect --input FILE --format json");
+        return Err("Usage: runner-preflight inspect --input FILE --format json|github");
     }
     let input = a.next().ok_or("Missing input file")?;
-    if a.next().as_deref() != Some("--format")
-        || a.next().as_deref() != Some("json")
-        || a.next().is_some()
-    {
-        return Err("Usage: runner-preflight inspect --input FILE --format json");
+    if a.next().as_deref() != Some("--format") {
+        return Err("Usage: runner-preflight inspect --input FILE --format json|github");
     }
-    inspect(Path::new(&input))
+    let format = match a.next().as_deref() {
+        Some("json") => OutputFormat::Json,
+        Some("github") => OutputFormat::GitHub,
+        _ => return Err("Usage: runner-preflight inspect --input FILE --format json|github"),
+    };
+    if a.next().is_some() {
+        return Err("Usage: runner-preflight inspect --input FILE --format json|github");
+    }
+    inspect(Path::new(&input), format)
 }
 fn main() -> ExitCode {
     match run() {
@@ -405,6 +444,29 @@ mod tests {
     fn unknown_json_field_rejected() {
         let raw = r#"{"schema":"runner-preflight-input-v1","runner":{"os":"linux","arch":"x86_64","disk_free_mb":1,"memory_free_mb":1,"unknown":true},"job":{"os":"linux","arch":"x86_64","min_disk_mb":1,"min_memory_mb":1}}"#;
         assert!(serde_json::from_str::<Inventory>(raw).is_err());
+    }
+    #[test]
+    fn github_annotations_are_static_and_preserve_all_severities() {
+        let ready = evaluate(&valid()).unwrap();
+        assert_eq!(
+            render_report(&ready, OutputFormat::GitHub).unwrap(),
+            "::notice title=Runner Preflight::READY - Declared requirements match; no host attestation."
+        );
+        let mut input = valid();
+        input.runner.disk_free_mb = input.job.min_disk_mb;
+        input.runner.arch = "aarch64".into();
+        let result = evaluate(&input).unwrap();
+        assert_eq!(result.status, Status::Hold);
+        let annotations = render_report(&result, OutputFormat::GitHub).unwrap();
+        assert!(annotations.contains("::error title=Runner Preflight::ARCH_MISMATCH - "));
+        assert!(annotations.contains("::warning title=Runner Preflight::DISK_HEADROOM_LOW - "));
+        assert!(!annotations.contains("aarch64"));
+        assert!(!annotations.contains("x86_64"));
+        assert_eq!(annotations.lines().count(), result.findings.len());
+        let json = render_report(&result, OutputFormat::Json).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed["status"], "HOLD");
+        assert_eq!(parsed["schema"], OUT_SCHEMA);
     }
     #[test]
     fn serialization_contract() {
