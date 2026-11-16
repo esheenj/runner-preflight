@@ -103,6 +103,28 @@ jobs:
           test "$held" -eq 2
           grep -Fq '::warning title=Runner Preflight::DISK_HEADROOM_LOW' /tmp/preflight-warn.txt
           grep -Fq '::error title=Runner Preflight::ARCH_MISMATCH' /tmp/preflight-hold.txt
+          set +e
+          ./target/release/runner-preflight actions-job --input ../fixtures/actions-job-prestep.json --format json > /tmp/actions-prestep.json
+          prestep=$?
+          ./target/release/runner-preflight actions-job --input ../fixtures/actions-job-step-failure.json --format json > /tmp/actions-executed.json
+          executed=$?
+          set -e
+          test "$prestep" -eq 2
+          test "$executed" -eq 2
+          python3 - <<'PY'
+          import json
+          expected = (
+              ('/tmp/actions-prestep.json', 'FAILED_WITHOUT_RECORDED_STEPS', False),
+              ('/tmp/actions-executed.json', 'FAILED_WITH_RECORDED_STEPS', True),
+          )
+          for path, signal, has_runner in expected:
+              with open(path, encoding='utf-8') as handle:
+                  result = json.load(handle)
+              assert result['schema'] == 'runner-preflight-actions-job-v1'
+              assert result['signal'] == signal
+              assert result['root_cause_verified'] is False
+              assert result['runner_id_recorded'] is has_runner
+          PY
           cd ..
           python3 -m unittest discover -s tests -p test_runner_preflight_collector.py -v
           case "$TARGET_ARCH" in
