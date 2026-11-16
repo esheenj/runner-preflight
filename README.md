@@ -4,6 +4,12 @@ Offline, read-only CI runner requirement matching with deterministic JSON report
 
 Runner Preflight evaluates a **supplied** inventory against a declared job specification. It **does not** inspect a host automatically, register CI runners, diagnose GitHub scheduling or billing, install software, access credentials, or repair a server. It does not grant financial or agent execution authority.
 
+## Latest standalone download — v0.3.0
+
+**[Runner Preflight v0.3.0 (Linux preview)](https://github.com/esheenj/runner-preflight/releases/tag/v0.3.0)** is published from this independent repository. Download the [x86-64 binary](https://github.com/esheenj/runner-preflight/releases/download/v0.3.0/runner-preflight-linux-x86_64), [ARM64 binary](https://github.com/esheenj/runner-preflight/releases/download/v0.3.0/runner-preflight-linux-aarch64), [complete source ZIP](https://github.com/esheenj/runner-preflight/releases/download/v0.3.0/runner-preflight-source.zip), or [SHA-256 manifest](https://github.com/esheenj/runner-preflight/releases/download/v0.3.0/SHA256SUMS).
+
+The [exact-main release CI](https://github.com/esheenj/runner-preflight/actions/runs/43838965049) passed both Rust 1.100.0 Linux builds, synthetic READY/WARN/HOLD and `--format github` smoke tests, Linux observer integration, source packaging and hash checks. The immutable release tag points at `1ecffdf095826e2b05d831cecce67c43bbdd385c`. These are **unsigned preview binaries**; neither code signing, production runner enrollment nor commercial support is claimed. Existing historical [v0.2.0 upstream downloads](https://github.com/esheenj/compound-intelligence-starter/releases/tag/runner-preflight-v0.2.0) remain available.
+
 ## Try it in a minute
 
 For developers who want to know whether a **declared CI job** matches a runner inventory before assigning it, clone this standalone repository on Linux x86-64 or ARM64 with Rust 1.100.0 and Cargo:
