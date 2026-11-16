@@ -44,6 +44,39 @@ cargo test --locked
 
 The tool cannot register runners, attest a host, access your GitHub account, fix billing or resolve job scheduling by itself. `READY` means only that **the supplied facts** meet the supplied requirements.
 
+## Offline GitHub Actions job-stage triage (source-only candidate)
+
+GitHub may mark a job **failed before any runner or execution steps are recorded**.
+This is different evidence from a failing test. The new **`actions-job`** subcommand
+accepts a bounded, locally supplied GitHub REST `/actions/jobs/{id}` JSON
+record and classifies the recorded stage **without making any network or
+credential calls**. It deliberately does not determine why GitHub did not
+allocate the runner or quote user-controlled workflow metadata.
+
+```sh
+cargo run --manifest-path rust/Cargo.toml --locked -- \
+  actions-job --input fixtures/actions-job-prestep.json --format json
+# "status":"HOLD","signal":"FAILED_WITHOUT_RECORDED_STEPS" (exit 2)
+cargo run --manifest-path rust/Cargo.toml --locked -- \
+  actions-job --input fixtures/actions-job-step-failure.json --format json
+# "status":"HOLD","signal":"FAILED_WITH_RECORDED_STEPS" (exit 2)
+```
+
+For a failed job with no recorded steps, inspect **GitHub check-run annotations**
+and account/repository Actions runner policy or billing separately. Without
+those records, the tool sets `root_cause_verified:false` and does not claim
+quota exhaustion, bad source tests or a broken self-hosted runner. Queued
+jobs are `NOT_TERMINAL` (exit 1); GitHub-reported successful jobs are
+`GITHUB_REPORTED_SUCCESS` (exit 0), not independent production attestation.
+
+The input limit is 64 KiB, regular file only, no symlinks; unexpected job
+metadata is ignored and never echoed. Do not save or publish private job JSON
+containing actual credentials. The synthetic fixture data above includes
+no real private workflow content. This functionality is **newer than the
+published v0.3.0 binaries** and requires building the current source. It
+will not be advertised as a shipped release feature until a separately
+verified versioned distribution exists.
+
 ## Optional: observe your own Linux runner
 
 The accompanying **Python 3 standard-library** observer reads a deliberately small set of current host facts locally, then generates input for the Rust evaluator. This is a complementary Python/Rust workflow, not a replacement for the Rust engine and **not present in the original v0.1.0 release**.
