@@ -35,13 +35,13 @@ jobs:
           [[ "$SOURCE_SHA" =~ ^[a-f0-9]{40}$ ]]
           test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
           test "$(git ls-remote origin refs/heads/main | cut -f1)" = "$SOURCE_SHA"
-          if ! grep -Fxq 'version = "0.3.0"' rust/Cargo.toml ||
-             ! grep -A1 '^name = "runner-preflight"$' rust/Cargo.lock | grep -Fxq 'version = "0.3.0"'; then
-            echo 'Source has moved beyond standalone v0.3.0; skip historical release workflow.'
+          if ! grep -Fxq 'version = "0.4.0"' rust/Cargo.toml ||
+             ! grep -A1 '^name = "runner-preflight"$' rust/Cargo.lock | grep -Fxq 'version = "0.4.0"'; then
+            echo 'Source does not match v0.4.0; skip release workflow.'
             echo 'publish=false' >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          tag=v0.3.0
+          tag=v0.4.0
           if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             for asset in BUILD_INFO.txt SHA256SUMS runner-preflight-source.zip runner-preflight-linux-x86_64 runner-preflight-linux-aarch64; do
               gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' | grep -Fxq "$asset"
@@ -121,7 +121,7 @@ jobs:
       - name: Upload qualified architecture artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: runner-preflight-v0.3.0-${{ matrix.arch }}-${{ github.run_id }}
+          name: runner-preflight-v0.4.0-${{ matrix.arch }}-${{ github.run_id }}
           path: dist/
           retention-days: 7
           if-no-files-found: error
@@ -141,12 +141,12 @@ jobs:
       - name: Download same-run x86-64 binary
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
-          name: runner-preflight-v0.3.0-x86_64-${{ github.run_id }}
+          name: runner-preflight-v0.4.0-x86_64-${{ github.run_id }}
           path: dist/x86_64
       - name: Download same-run ARM64 binary
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
-          name: runner-preflight-v0.3.0-aarch64-${{ github.run_id }}
+          name: runner-preflight-v0.4.0-aarch64-${{ github.run_id }}
           path: dist/aarch64
       - name: Validate and assemble immutable release candidate
         env:
@@ -182,7 +182,7 @@ jobs:
       - name: Upload exact-source release candidate
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: runner-preflight-v0.3.0-candidate-${{ github.run_id }}
+          name: runner-preflight-v0.4.0-candidate-${{ github.run_id }}
           path: dist/release/
           retention-days: 7
           if-no-files-found: error
@@ -193,7 +193,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     concurrency:
-      group: runner-preflight-standalone-v0.3.0-publication
+      group: runner-preflight-standalone-v0.4.0-publication
       cancel-in-progress: false
     permissions:
       contents: write
@@ -206,7 +206,7 @@ jobs:
       - name: Download only verified same-run candidate
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
-          name: runner-preflight-v0.3.0-candidate-${{ github.run_id }}
+          name: runner-preflight-v0.4.0-candidate-${{ github.run_id }}
           path: dist/release
       - name: Verify source before publication and refuse tag rewrite
         env:
@@ -217,25 +217,25 @@ jobs:
           test "$(git ls-remote origin refs/heads/main | cut -f1)" = "$SOURCE_SHA"
           ( cd dist/release && sha256sum --check SHA256SUMS )
           grep -Fxq "Source commit: $SOURCE_SHA" dist/release/BUILD_INFO.txt
-          if git ls-remote --exit-code --tags origin refs/tags/v0.3.0 >/dev/null 2>&1; then
+          if git ls-remote --exit-code --tags origin refs/tags/v0.4.0 >/dev/null 2>&1; then
             echo "::error::Target release tag already exists. Do not overwrite or move it."
             exit 1
           fi
-      - name: Publish the first standalone Linux preview release
+      - name: Publish standalone Linux preview release
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
           set -euo pipefail
-          gh release create v0.3.0 \
+          gh release create v0.4.0 \
             dist/release/runner-preflight-linux-x86_64 \
             dist/release/runner-preflight-linux-aarch64 \
             dist/release/runner-preflight-source.zip \
             dist/release/SHA256SUMS \
             dist/release/BUILD_INFO.txt \
             --target "$SOURCE_SHA" \
-            --title 'Runner Preflight v0.3.0 — standalone Linux preview' \
+            --title 'Runner Preflight v0.4.0 — standalone Linux preview' \
             --notes-file RELEASE_NOTES.md \
             --latest=false --prerelease
-          gh release view v0.3.0 --json url,tagName,isDraft,isPrerelease,assets
+          gh release view v0.4.0 --json url,tagName,isDraft,isPrerelease,assets
