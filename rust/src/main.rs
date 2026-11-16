@@ -374,8 +374,18 @@ mod tests {
         input.runner.memory_free_mb = 3;
         let report = evaluate(&input).unwrap();
         assert_eq!(report.status, Status::Warn);
-        assert!(report.findings.iter().any(|f| f.code == "DISK_HEADROOM_LOW"));
-        assert!(report.findings.iter().any(|f| f.code == "MEMORY_HEADROOM_LOW"));
+        assert!(
+            report
+                .findings
+                .iter()
+                .any(|f| f.code == "DISK_HEADROOM_LOW")
+        );
+        assert!(
+            report
+                .findings
+                .iter()
+                .any(|f| f.code == "MEMORY_HEADROOM_LOW")
+        );
         input.job.min_disk_mb = 4;
         input.runner.disk_free_mb = 5;
         input.job.min_memory_mb = 4;
