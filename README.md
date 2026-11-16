@@ -68,7 +68,7 @@ The input JSON (maximum 64 KiB, regular file only, no symlinks) has `schema: "ru
 | Exit code | Meaning |
 |---|---|
 | 0 | READY: declared requirements matched |
-| 1 | WARN: requirements matched, low resource headroom |
+| 1 | WARN: requirements matched but disk or memory has **less than 25% spare capacity** above the declared minimum |
 | 2 | HOLD: one or more requirements missing |
 | 3 | Invalid input or CLI usage |
 
@@ -79,3 +79,7 @@ The [standalone v0.2.0 import](https://github.com/esheenj/runner-preflight/commi
 The [independent repository CI](https://github.com/esheenj/runner-preflight/actions/runs/43741752446) already passed Linux x86-64 and ARM64 Rust qualification and its own dependency advisory/license/source checks for the initial import. Each subsequent source revision needs its own passing CI before release. The earlier [v0.2.0 preview binaries](https://github.com/esheenj/compound-intelligence-starter/releases/tag/runner-preflight-v0.2.0) remain hosted in the upstream research repository; **no standalone-repository binary release is claimed here**.
 
 MIT licensed (see `LICENSE`). Read [contribution guidelines](CONTRIBUTING.md) and [security reporting guidance](SECURITY.md) before sharing a bug report. Do not advertise an executable as signed, certified, actually inspecting an Oracle host, or commercially supported merely because source tests pass. No additional recurring infrastructure spend or paid dependency is required.
+
+### Resource thresholds
+
+The job's `min_disk_mb` and `min_memory_mb` are minimum requirements. Below either minimum means `HOLD`. Meeting a **positive** minimum with less than 25% additional capacity means `WARN`, including the small case of 1 MiB available against a 1 MiB requirement; exactly 25% headroom or more is `READY` when other checks pass. A zero minimum does not trigger a headroom warning. These are calculations on supplied/observed estimates, not a guarantee that a CI job will start.

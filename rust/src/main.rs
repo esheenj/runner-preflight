@@ -122,6 +122,12 @@ fn add(findings: &mut Vec<Finding>, code: &'static str, severity: Status, messag
         message,
     });
 }
+fn low_headroom(free: u64, required: u64) -> bool {
+    // Validated resource values are <= 1,000,000; exact products cannot overflow.
+    // Compare 4 * free < 5 * required to avoid rounding away a small
+    // (< 25%) headroom deficit when required is not divisible by four.
+    required > 0 && free >= required && free * 4 < required * 5
+}
 fn evaluate(input: &Inventory) -> Result<Report, &'static str> {
     validate(input)?;
     let r = &input.runner;
@@ -162,7 +168,7 @@ fn evaluate(input: &Inventory) -> Result<Report, &'static str> {
             Status::Hold,
             "Free disk below requirement.",
         );
-    } else if j.min_disk_mb > 0 && r.disk_free_mb * 4 < j.min_disk_mb * 5 {
+    } else if low_headroom(r.disk_free_mb, j.min_disk_mb) {
         add(
             &mut findings,
             "DISK_HEADROOM_LOW",
@@ -177,7 +183,7 @@ fn evaluate(input: &Inventory) -> Result<Report, &'static str> {
             Status::Hold,
             "Free memory below requirement.",
         );
-    } else if j.min_memory_mb > 0 && r.memory_free_mb * 4 < j.min_memory_mb * 5 {
+    } else if low_headroom(r.memory_free_mb, j.min_memory_mb) {
         add(
             &mut findings,
             "MEMORY_HEADROOM_LOW",
@@ -351,6 +357,81 @@ mod tests {
         }
     }
     #[test]
+    fn small_resource_thresholds_do_not_round_away_warnings() {
+        // Meeting a minimum means 0% spare capacity, so both resources warn.
+        let mut m = valid();
+        m.runner.disk_free_mb = 1;
+        m.job.min_disk_mb = 1;
+        m.runner.memory_free_mb = 1;
+        m.job.min_memory_mb = 1;
+        let report = evaluate(&m).unwrap();
+        assert_eq!(report.status, Status::Warn);
+        let codes: Vec<_> = report.findings.iter().map(|f| f.code).collect();
+        assert!(codes.contains(&"DISK_HEADROOM_LOW"));
+        assert!(codes.contains(&"MEMORY_HEADROOM_LOW"));
+    }
+    #[test]
+    fn resource_headroom_exact_quarter_is_not_a_warning() {
+        let mut m = valid();
+        m.runner.disk_free_mb = 5;
+        m.job.min_disk_mb = 4;
+        m.runner.memory_free_mb = 5;
+        m.job.min_memory_mb = 4;
+        assert_eq!(evaluate(&m).unwrap().status, Status::Ready);
+    }
+    #[test]
+    fn zero_requirements_and_big_valid_quantities() {
+        let mut m = valid();
+        m.runner.disk_free_mb = 0;
+        m.job.min_disk_mb = 0;
+        m.runner.memory_free_mb = 0;
+        m.job.min_memory_mb = 0;
+        assert_eq!(evaluate(&m).unwrap().status, Status::Ready);
+        m.runner.disk_free_mb = 1_000_000;
+        m.job.min_disk_mb = 1_000_000;
+        m.runner.memory_free_mb = 1_000_000;
+        m.job.min_memory_mb = 1_000_000;
+        let report = evaluate(&m).unwrap();
+        assert_eq!(report.status, Status::Warn);
+        assert_eq!(report.findings.len(), 2);
+    }
+    #[test]
+    fn resource_below_minimum_stays_hold_not_warn() {
+        let mut m = valid();
+        m.runner.disk_free_mb = 3;
+        m.job.min_disk_mb = 4;
+        m.runner.memory_free_mb = 3;
+        m.job.min_memory_mb = 4;
+        let report = evaluate(&m).unwrap();
+        assert_eq!(report.status, Status::Hold);
+        assert!(
+            report
+                .findings
+                .iter()
+                .any(|f| f.code == "DISK_INSUFFICIENT")
+        );
+        assert!(
+            report
+                .findings
+                .iter()
+                .any(|f| f.code == "MEMORY_INSUFFICIENT")
+        );
+    }
+    #[test]
+    fn headroom_predicate_is_exact_at_small_boundary_values() {
+        for required in 0..=1000_u64 {
+            for free in 0..=1000_u64 {
+                let expected =
+                    required > 0 && free >= required && (free as u128 * 4) < (required as u128 * 5);
+                assert_eq!(
+                    low_headroom(free, required),
+                    expected,
+                    "free={free} required={required}"
+                );
+            }
+        }
+    }
+    #[test]
     fn invalid_schema_and_token_rejected() {
         let mut m = valid();
         m.schema = "other".into();
@@ -364,37 +445,6 @@ mod tests {
         let raw = r#"{"schema":"runner-preflight-input-v1","runner":{"os":"linux","arch":"x86_64","disk_free_mb":1,"memory_free_mb":1,"unknown":true},"job":{"os":"linux","arch":"x86_64","min_disk_mb":1,"min_memory_mb":1}}"#;
         assert!(serde_json::from_str::<Inventory>(raw).is_err());
     }
-
-    #[test]
-    fn exact_twenty_five_percent_headroom_boundaries() {
-        let mut input = valid();
-        input.job.min_disk_mb = 1;
-        input.runner.disk_free_mb = 1;
-        input.job.min_memory_mb = 3;
-        input.runner.memory_free_mb = 3;
-        let report = evaluate(&input).unwrap();
-        assert_eq!(report.status, Status::Warn);
-        assert!(
-            report
-                .findings
-                .iter()
-                .any(|f| f.code == "DISK_HEADROOM_LOW")
-        );
-        assert!(
-            report
-                .findings
-                .iter()
-                .any(|f| f.code == "MEMORY_HEADROOM_LOW")
-        );
-        input.job.min_disk_mb = 4;
-        input.runner.disk_free_mb = 5;
-        input.job.min_memory_mb = 4;
-        input.runner.memory_free_mb = 5;
-        let report = evaluate(&input).unwrap();
-        assert_eq!(report.status, Status::Ready);
-        assert!(report.findings.is_empty());
-    }
-
     #[test]
     fn github_annotations_are_static_and_preserve_all_severities() {
         let ready = evaluate(&valid()).unwrap();
