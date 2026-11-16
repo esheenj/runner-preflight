@@ -60,6 +60,32 @@ jobs:
           grep -Fq '::error title=Runner Preflight::ARCH_MISMATCH - ' /tmp/preflight-gh-hold.txt
           test "$(wc -l < /tmp/preflight-gh-ready.txt)" -eq 1
           # Keep synthetic HOLD annotations out of live CI stdout; inspect files.
+      - name: Verify offline GitHub Actions job-stage triage
+        run: |
+          set -euo pipefail
+          set +e
+          ./target/release/runner-preflight actions-job --input ../fixtures/actions-job-prestep.json --format json > /tmp/job-prestep.json
+          unassigned=$?
+          ./target/release/runner-preflight actions-job --input ../fixtures/actions-job-step-failure.json --format json > /tmp/job-failure.json
+          executed=$?
+          set -e
+          test "$unassigned" -eq 2
+          test "$executed" -eq 2
+          python3 - <<'PY'
+          import json
+          for path, code, count, recorded in (
+              ('/tmp/job-prestep.json', 'FAILED_WITHOUT_RECORDED_STEPS', 0, False),
+              ('/tmp/job-failure.json', 'FAILED_WITH_RECORDED_STEPS', 1, True),
+          ):
+              with open(path, encoding='utf-8') as stream:
+                  report = json.load(stream)
+              assert report['schema'] == 'runner-preflight-actions-job-v1'
+              assert report['signal'] == code
+              assert report['recorded_steps'] == count
+              assert report['runner_id_recorded'] is recorded
+              assert report['root_cause_verified'] is False
+              assert 'fictional' not in json.dumps(report)
+          PY
       - name: Validate read-only Linux observation with the extracted Rust binary
         working-directory: .
         run: |

@@ -1,0 +1,10 @@
+{
+  "id": 123456,
+  "status": "completed",
+  "conclusion": "failure",
+  "runner_id": 0,
+  "steps": [],
+  "name": "fictional job not started",
+  "labels": ["ubuntu-latest"],
+  "workflow_name": "Synthetic CI"
+}

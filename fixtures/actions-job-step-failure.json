@@ -1,0 +1,11 @@
+{
+  "id": 123457,
+  "status": "completed",
+  "conclusion": "failure",
+  "runner_id": 44,
+  "steps": [
+    {"name": "Synthetic regression", "status": "completed", "conclusion": "failure"}
+  ],
+  "name": "fictional failed test",
+  "labels": ["self-hosted", "Linux"]
+}
