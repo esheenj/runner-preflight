@@ -4,11 +4,11 @@ Offline, read-only CI runner requirement matching with deterministic JSON report
 
 Runner Preflight evaluates a **supplied** inventory against a declared job specification. It **does not** inspect a host automatically, register CI runners, diagnose GitHub scheduling or billing, install software, access credentials, or repair a server. It does not grant financial or agent execution authority.
 
-## Latest standalone download — v0.3.0
+## Latest standalone download — v0.4.0
 
-**[Runner Preflight v0.3.0 (Linux preview)](https://github.com/esheenj/runner-preflight/releases/tag/v0.3.0)** is published from this independent repository. Download the [x86-64 binary](https://github.com/esheenj/runner-preflight/releases/download/v0.3.0/runner-preflight-linux-x86_64), [ARM64 binary](https://github.com/esheenj/runner-preflight/releases/download/v0.3.0/runner-preflight-linux-aarch64), [complete source ZIP](https://github.com/esheenj/runner-preflight/releases/download/v0.3.0/runner-preflight-source.zip), or [SHA-256 manifest](https://github.com/esheenj/runner-preflight/releases/download/v0.3.0/SHA256SUMS).
+**[Runner Preflight v0.4.0 (Linux preview)](https://github.com/esheenj/runner-preflight/releases/tag/v0.4.0)** is now published from this independent repository. Download the [x86-64 binary](https://github.com/esheenj/runner-preflight/releases/download/v0.4.0/runner-preflight-linux-x86_64), [ARM64 binary](https://github.com/esheenj/runner-preflight/releases/download/v0.4.0/runner-preflight-linux-aarch64), [complete source ZIP](https://github.com/esheenj/runner-preflight/releases/download/v0.4.0/runner-preflight-source.zip), or [SHA-256 manifest](https://github.com/esheenj/runner-preflight/releases/download/v0.4.0/SHA256SUMS).
 
-The [exact-main release CI](https://github.com/esheenj/runner-preflight/actions/runs/43838965049) passed both Rust 1.100.0 Linux builds, synthetic READY/WARN/HOLD and `--format github` smoke tests, Linux observer integration, source packaging and hash checks. The immutable release tag points at `1ecffdf095826e2b05d831cecce67c43bbdd385c`. These are **unsigned preview binaries**; neither code signing, production runner enrollment nor commercial support is claimed. Existing historical [v0.2.0 upstream downloads](https://github.com/esheenj/compound-intelligence-starter/releases/tag/runner-preflight-v0.2.0) remain available.
+[Exact-main qualification](https://github.com/esheenj/runner-preflight/actions/runs/43887587709) and the subsequent [five-job release workflow](https://github.com/esheenj/runner-preflight/actions/runs/43887711683) **passed**: Rust 1.100.0 x64/ARM64 locked builds, offline READY/WARN/HOLD, Actions annotation and job-stage triage smoke checks, Python Linux observer, dependency audit, source packaging and hash verification. The v0.4.0 tag points to `53f524abce8156da0c4450b989b10af2e13bc594`, independently verified against the GitHub release. These remain **unsigned preview binaries**; no code signing, production runner enrollment or commercial support is claimed. Previous [standalone v0.3.0](https://github.com/esheenj/runner-preflight/releases/tag/v0.3.0) and [historical v0.2.0 upstream downloads](https://github.com/esheenj/compound-intelligence-starter/releases/tag/runner-preflight-v0.2.0) remain available.
 
 ## Try it in a minute
 
@@ -44,7 +44,7 @@ cargo test --locked
 
 The tool cannot register runners, attest a host, access your GitHub account, fix billing or resolve job scheduling by itself. `READY` means only that **the supplied facts** meet the supplied requirements.
 
-## Offline GitHub Actions job-stage triage (source-only candidate)
+## Offline GitHub Actions job-stage triage (v0.4.0)
 
 GitHub may mark a job **failed before any runner or execution steps are recorded**.
 This is different evidence from a failing test. The new **`actions-job`** subcommand
@@ -72,10 +72,9 @@ jobs are `NOT_TERMINAL` (exit 1); GitHub-reported successful jobs are
 The input limit is 64 KiB, regular file only, no symlinks; unexpected job
 metadata is ignored and never echoed. Do not save or publish private job JSON
 containing actual credentials. The synthetic fixture data above includes
-no real private workflow content. This functionality is **newer than the
-published v0.3.0 binaries** and requires building the current source. It
-will not be advertised as a shipped release feature until a separately
-verified versioned distribution exists.
+no real private workflow content. This command is included in the independently
+[verified v0.4.0 Linux binaries](https://github.com/esheenj/runner-preflight/releases/tag/v0.4.0);
+the earlier v0.3.0 release does not include it.
 
 ## Optional: observe your own Linux runner
 
@@ -115,7 +114,7 @@ The input JSON (maximum 64 KiB, regular file only, no symlinks) has `schema: "ru
 
 The [standalone v0.2.0 import](https://github.com/esheenj/runner-preflight/commit/ea0c21d1a5da31fb59cafb31324f413256309739) originated from explicitly allowlisted, original, **public** files in [Compound Intelligence Starter](https://github.com/esheenj/compound-intelligence-starter/tree/main/experiments/runner_preflight). `SOURCE_PROVENANCE.json` describes that **immutable import snapshot**, not every future commit in this evolving repository. `scripts/verify_import_provenance.py` independently checks the original Git blobs, hashes and sizes in CI; normal README and workflow improvements do not rewrite the import evidence.
 
-The [independent repository CI](https://github.com/esheenj/runner-preflight/actions) tests Linux x86-64 and ARM64 Rust qualification, local observer compatibility, original import provenance, and dependency advisories/licenses/sources. Each source revision needs its own passing CI before release. **[Standalone versioned downloads](https://github.com/esheenj/runner-preflight/releases)** are published only after a successful exact-main CI run and immutable-tag checks; their presence and checksums must be verified on the Releases page rather than assumed from source commits. The historical [v0.2.0 preview binaries](https://github.com/esheenj/compound-intelligence-starter/releases/tag/runner-preflight-v0.2.0) remain available in the upstream research repository.
+The [independent repository CI](https://github.com/esheenj/runner-preflight/actions) tests Linux x86-64 and ARM64 Rust qualification, local observer compatibility, original import provenance, and dependency advisories/licenses/sources. Each source revision needs its own passing CI before release. **[Standalone versioned downloads](https://github.com/esheenj/runner-preflight/releases)** are published only after a successful exact-main CI run and version-tag collision and exact-source checks; their presence and checksums must be verified on the Releases page rather than assumed from source commits. The historical [v0.2.0 preview binaries](https://github.com/esheenj/compound-intelligence-starter/releases/tag/runner-preflight-v0.2.0) remain available in the upstream research repository.
 
 MIT licensed (see `LICENSE`). Read [contribution guidelines](CONTRIBUTING.md) and [security reporting guidance](SECURITY.md) before sharing a bug report. Do not advertise an executable as signed, certified, actually inspecting an Oracle host, or commercially supported merely because source tests pass. No additional recurring infrastructure spend or paid dependency is required.
 
