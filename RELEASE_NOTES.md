@@ -1,45 +1,64 @@
-# Runner Preflight v0.3.0 — standalone CI diagnostics preview
+# Runner Preflight v0.4.0 — offline Actions job-stage evidence
 
-This is the **first versioned release from the independent public `esheenj/runner-preflight` repository**. It carries the original offline Rust CLI and the opt-in Python 3 Linux inventory collector forward from the historical v0.2.0 source snapshot, plus additional GitHub-friendly diagnostics.
+Runner Preflight is an original MIT-licensed, offline Rust CLI for checking
+declared CI runner inventories against job requirements. This standalone Linux
+x64/ARM64 preview retains all v0.3.0 `inspect` behavior and adds an independently
+tested, narrower job-stage diagnostic.
 
-## New in v0.3.0
+## New in v0.4.0
 
-- `inspect --input FILE --format github`: emits **GitHub Actions notice, warning, or error annotations** based on READY/WARN/HOLD findings, without echoing values, paths, tool names, labels or credentials from the supplied JSON. `--format json` continues to work exactly as before.
-- Correct, integer-exact 25% free-memory and free-disk headroom thresholds (including tiny minimums and boundary cases), with independent exhaustive unit tests. Declared resource thresholds remain bounded to 1,000,000 MiB.
-- Original README/onboarding, synthetic fixtures, public source-import provenance verification, locked Rust 1.100.0, and clean Linux observer remain in the independent repository.
+- `actions-job --input FILE --format json`: classify a **supplied** GitHub Actions
+  job JSON record as `FAILED_WITHOUT_RECORDED_STEPS`, `FAILED_WITH_RECORDED_STEPS`,
+  `NOT_TERMINAL`, `GITHUB_REPORTED_SUCCESS` or inconclusive terminal state.
+- A job with no steps and `runner_id: 0` is **not** proof of a particular billing,
+  GitHub-hosted allocation, repo Actions setting or workflow-source failure.
+  Output explicitly sets `root_cause_verified:false` and directs maintainers to
+  GitHub check-run annotations / Actions settings, without claiming access.
+- Input is a bounded regular file (max 64 KiB, no symlinks); the diagnostic never
+  reproduces user-controlled runner labels, job names, paths, URLs, IDs, step
+  contents, tokens or logs. Only fixed codes and messages leave the tool.
+- Synthetic no-step and executed-failure fixtures, negative tests and both
+  architecture smoke checks cover the new functionality.
+- Existing `inspect --input FILE --format json|github` and exit codes
+  0 READY, 1 WARN, 2 HOLD, 3 invalid input remain unchanged.
 
-## Downloadable assets
+## Reproduce the new CLI behavior
 
-- `runner-preflight-linux-x86_64` — Rust CLI for Linux x86-64 (unsigned preview)
-- `runner-preflight-linux-aarch64` — Rust CLI for Linux ARM64 (unsigned preview)
-- `runner-preflight-source.zip` — source snapshot from the **exact published standalone repository commit**, not a rebranded parent-repo ZIP; no private history or .git directory
-- `SHA256SUMS` — SHA-256 hashes for source and both binaries
-- `BUILD_INFO.txt` — original source commit, GitHub Actions run and project-local Rust/Cargo toolchain evidence for each architecture
-
-## Usage
-
-From source (requires Rust 1.100.0/Cargo):
-
-```sh
-cd rust
-cargo test --locked
-cargo run --locked -- inspect --input ../fixtures/ready-x64.json --format json
-cargo run --locked -- inspect --input ../fixtures/ready-x64.json --format github
-```
-
-To observe local Linux resources **only on a machine you own or administer**:
+From the source ZIP root (Rust 1.100.0 and Cargo required):
 
 ```sh
-python3 scripts/collect_linux_runner.py --job fixtures/job-linux-x64.json --workspace . > observed.json
-cargo run --manifest-path rust/Cargo.toml --locked -- inspect --input observed.json --format json
+cargo run --manifest-path rust/Cargo.toml --locked -- actions-job --input fixtures/actions-job-prestep.json --format json
+# HOLD: FAILED_WITHOUT_RECORDED_STEPS (exit 2)
+
+cargo run --manifest-path rust/Cargo.toml --locked -- actions-job --input fixtures/actions-job-step-failure.json --format json
+# HOLD: FAILED_WITH_RECORDED_STEPS (exit 2)
+
+cargo run --manifest-path rust/Cargo.toml --locked -- inspect --input fixtures/ready-x64.json --format json
+# READY (exit 0)
 ```
 
-Use `job-linux-arm64.json` on ARM64. The CLI exit codes remain 0 READY, 1 WARN, 2 HOLD and 3 invalid input/usage. `WARN` and `HOLD` produce nonzero status by design.
+The tool reads no GitHub token, never calls the GitHub API and makes no claim
+that a runner is registered or a private-job failure has been repaired.
+Users should sanitize saved real job JSON before sharing it anywhere.
 
-## Exact boundaries
+## Distributed assets and verification
 
-All conclusions are about **supplied** requirements and inventory, not authenticated host attestations, GitHub runner registration, live scheduling, configured tool versions, exchange permissions or actual production readiness. The Python observer reads only bounded local Linux resource, OS/arch and requested executable-name presence; it deliberately leaves labels and installed Rust targets unverified/empty. The browser playground remains a separate synthetic JavaScript reference, **not** Rust/WASM.
+- `runner-preflight-linux-x86_64`: unsigned Linux x64 native Rust CLI.
+- `runner-preflight-linux-aarch64`: unsigned Linux ARM64 native Rust CLI.
+- `runner-preflight-source.zip`: original public standalone repository snapshot
+  at the exact release commit; no `.git` history and no private control source.
+- `SHA256SUMS`: hashes of both binaries and source snapshot.
+- `BUILD_INFO.txt`: commit and per-architecture toolchain receipts.
 
-Build CI on Linux x86-64 and ARM64 verifies pinned toolchain, locked Cargo format/Clippy/tests/build, deterministic exit codes, annotations, Python observer and immutable original import provenance. The source and binaries have SHA-256 receipts; **no code signing or independent security certification** is claimed. No customer adoption, paid service, crates.io publication or live host deployment is implied. Additional recurring infrastructure spend: R0.
+Protected GitHub Actions release workflow publishes only after exact-main
+qualification, Rust 1.100.0 fmt/Clippy/tests/build, negative/synthetic CLI
+checks, Python Linux observer tests, original import provenance, dependency
+advisory/license/source audit, same-run architecture artifact checks and
+release hash verification. Existing `v0.3.0` and older parent-repository
+releases are retained without moving tags.
 
-The historical parent-repository v0.1.0 and v0.2.0 preview releases remain published unchanged.
+**Limitations:** Linux only for built binaries and opt-in local observation;
+unsigned preview; not a hosted CI runner, scheduler, account-billing diagnostic,
+attested host, commercial support contract, signing authority or production
+access. No real-world usage, revenue or customer adoption is inferred from
+publication. Additional recurring infrastructure spend: R0.
