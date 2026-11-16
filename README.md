@@ -16,6 +16,17 @@ cargo run --manifest-path rust/Cargo.toml --locked -- inspect --input fixtures/r
 
 Expected JSON contains `"status":"READY"`. To see how a missing requirement produces an actionable result, run `cargo run --manifest-path rust/Cargo.toml --locked -- inspect --input fixtures/hold-arch.json --format json`; this exits with code 2 (`HOLD`) rather than silently approving the job. The [original offline playground](https://esheenj.github.io/compound-intelligence-starter/runner-preflight.html) lets developers try the same synthetic contract without installing Rust; it is a JavaScript reference, not a host inspector.
 
+### GitHub Actions-friendly output
+
+Use `--format github` instead of `--format json` to emit GitHub Actions workflow annotations directly: `READY` is a **notice**, low resource headroom is a **warning**, and a missing requirement is an **error**. This follows [GitHub's workflow command convention](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-commands). It uses **static reason codes and messages only**; user-provided runner labels, paths, usernames, job values, host identifiers and credentials are never copied to workflow annotations. Output stays offline.
+
+```sh
+cargo run --manifest-path rust/Cargo.toml --locked -- inspect --input fixtures/ready-x64.json --format github
+# ::notice title=Runner Preflight::READY - Declared requirements match; no host attestation.
+```
+
+When used as a step in your own GitHub Actions workflow, `WARN` exits **1** and `HOLD` exits **2**, so both require explicit handling if you wish the step to continue. The conventional JSON format, schema and exit codes remain unchanged. A preflight outcome **only evaluates supplied claims**: it does not prove a runner is registered, online or scheduled. Disk and memory headroom warns when observed free resources are strictly less than 125% of the declared minimum, including small integer values with no spare capacity.
+
 To validate source and its Rust dependencies:
 
 ```sh
