@@ -365,17 +365,30 @@ mod tests {
         m.job.min_memory_mb = 4;
         let report = evaluate(&m).unwrap();
         assert_eq!(report.status, Status::Hold);
-        assert!(report.findings.iter().any(|f| f.code == "DISK_INSUFFICIENT"));
-        assert!(report.findings.iter().any(|f| f.code == "MEMORY_INSUFFICIENT"));
+        assert!(
+            report
+                .findings
+                .iter()
+                .any(|f| f.code == "DISK_INSUFFICIENT")
+        );
+        assert!(
+            report
+                .findings
+                .iter()
+                .any(|f| f.code == "MEMORY_INSUFFICIENT")
+        );
     }
     #[test]
     fn headroom_predicate_is_exact_at_small_boundary_values() {
         for required in 0..=1000_u64 {
             for free in 0..=1000_u64 {
-                let expected = required > 0 && free >= required &&
-                    (free as u128 * 4) < (required as u128 * 5);
-                assert_eq!(low_headroom(free, required), expected,
-                    "free={free} required={required}");
+                let expected =
+                    required > 0 && free >= required && (free as u128 * 4) < (required as u128 * 5);
+                assert_eq!(
+                    low_headroom(free, required),
+                    expected,
+                    "free={free} required={required}"
+                );
             }
         }
     }
