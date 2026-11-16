@@ -9,6 +9,7 @@ use std::process::ExitCode;
 const IN_SCHEMA: &str = "runner-preflight-input-v1";
 const OUT_SCHEMA: &str = "runner-preflight-result-v1";
 const MAX_BYTES: u64 = 65_536;
+const ACTIONS_JOB_SCHEMA: &str = "runner-preflight-actions-job-v1";
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -71,6 +72,67 @@ struct Report {
     schema: &'static str,
     status: Status,
     findings: Vec<Finding>,
+}
+#[derive(Debug, Deserialize)]
+struct ActionsJob {
+    // GitHub's job resource carries additional fields; ignore them.
+    status: String,
+    conclusion: Option<String>,
+    runner_id: Option<u64>,
+    steps: Option<Vec<serde_json::Value>>,
+}
+#[derive(Debug, Serialize)]
+struct ActionsJobReport {
+    schema: &'static str,
+    status: Status,
+    signal: &'static str,
+    recorded_steps: usize,
+    runner_id_recorded: bool,
+    root_cause_verified: bool,
+    next_action: &'static str,
+}
+fn classify_actions_job(job: &ActionsJob) -> Result<ActionsJobReport, &'static str> {
+    let steps = job.steps.as_ref().map_or(0, Vec::len);
+    if steps > 512 {
+        return Err("Too many recorded steps");
+    }
+    let (status, signal, next_action) = match (job.status.as_str(), job.conclusion.as_deref()) {
+        ("queued" | "in_progress" | "waiting" | "pending", None) => (
+            Status::Warn,
+            "NOT_TERMINAL",
+            "Refresh job metadata; do not infer a failure before completion.",
+        ),
+        ("completed", Some("success")) => (
+            Status::Ready,
+            "GITHUB_REPORTED_SUCCESS",
+            "Review required check and source revision independently.",
+        ),
+        ("completed", Some("failure" | "startup_failure")) if steps == 0 => (
+            Status::Hold,
+            "FAILED_WITHOUT_RECORDED_STEPS",
+            "Read check-run annotations and Actions billing, policy and runner allocation; the cause is not established.",
+        ),
+        ("completed", Some("failure" | "startup_failure")) => (
+            Status::Hold,
+            "FAILED_WITH_RECORDED_STEPS",
+            "Inspect recorded failed steps and their logs; do not infer a runner-allocation cause.",
+        ),
+        ("completed", Some("cancelled" | "skipped" | "timed_out" | "action_required" | "neutral" | "stale")) => (
+            Status::Warn,
+            "NON_SUCCESSFUL_OR_INCONCLUSIVE",
+            "Inspect GitHub's job conclusion and applicable required checks.",
+        ),
+        _ => return Err("Invalid or inconsistent GitHub job status"),
+    };
+    Ok(ActionsJobReport {
+        schema: ACTIONS_JOB_SCHEMA,
+        status,
+        signal,
+        recorded_steps: steps,
+        runner_id_recorded: job.runner_id.is_some_and(|id| id > 0),
+        root_cause_verified: false,
+        next_action,
+    })
 }
 fn token_ok(v: &str) -> bool {
     !v.is_empty()
@@ -281,24 +343,55 @@ fn inspect(path: &Path, format: OutputFormat) -> Result<u8, &'static str> {
     println!("{}", render_report(&report, format)?);
     Ok(rc)
 }
+fn triage_actions_job(path: &Path) -> Result<u8, &'static str> {
+    // Bounded, offline file input. Do not echo untrusted job names, labels or logs.
+    let info = fs::symlink_metadata(path).map_err(|_| "Input cannot be inspected")?;
+    if !info.file_type().is_file() || info.len() > MAX_BYTES {
+        return Err("Input must be a regular file no larger than 64 KiB");
+    }
+    let bytes = fs::read(path).map_err(|_| "Input cannot be read")?;
+    if bytes.len() as u64 > MAX_BYTES {
+        return Err("Input file too large");
+    }
+    let job: ActionsJob =
+        serde_json::from_slice(&bytes).map_err(|_| "Invalid Actions job JSON")?;
+    let report = classify_actions_job(&job)?;
+    let code = match report.status {
+        Status::Ready => 0,
+        Status::Warn => 1,
+        Status::Hold => 2,
+    };
+    println!(
+        "{}",
+        serde_json::to_string(&report).map_err(|_| "Output serialization failed")?
+    );
+    Ok(code)
+}
 fn run() -> Result<u8, &'static str> {
     let mut a = std::env::args().skip(1);
-    if a.next().as_deref() != Some("inspect") || a.next().as_deref() != Some("--input") {
-        return Err("Usage: runner-preflight inspect --input FILE --format json|github");
+    let command = a.next().ok_or("Usage: runner-preflight inspect|actions-job --input FILE --format json|github")?;
+    if !matches!(command.as_str(), "inspect" | "actions-job")
+        || a.next().as_deref() != Some("--input")
+    {
+        return Err("Usage: runner-preflight inspect|actions-job --input FILE --format json|github");
     }
     let input = a.next().ok_or("Missing input file")?;
     if a.next().as_deref() != Some("--format") {
-        return Err("Usage: runner-preflight inspect --input FILE --format json|github");
+        return Err("Usage: runner-preflight inspect|actions-job --input FILE --format json|github");
     }
     let format = match a.next().as_deref() {
         Some("json") => OutputFormat::Json,
-        Some("github") => OutputFormat::GitHub,
-        _ => return Err("Usage: runner-preflight inspect --input FILE --format json|github"),
+        Some("github") if command == "inspect" => OutputFormat::GitHub,
+        _ => return Err("Unsupported format for this command"),
     };
     if a.next().is_some() {
-        return Err("Usage: runner-preflight inspect --input FILE --format json|github");
+        return Err("Usage: runner-preflight inspect|actions-job --input FILE --format json|github");
     }
-    inspect(Path::new(&input), format)
+    match command.as_str() {
+        "inspect" => inspect(Path::new(&input), format),
+        "actions-job" => triage_actions_job(Path::new(&input)),
+        _ => Err("Unsupported command"),
+    }
 }
 fn main() -> ExitCode {
     match run() {
@@ -467,6 +560,77 @@ mod tests {
         let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed["status"], "HOLD");
         assert_eq!(parsed["schema"], OUT_SCHEMA);
+    }
+    #[test]
+    fn actions_job_failed_without_runner_or_steps_is_not_test_failure() {
+        let job: ActionsJob =
+            serde_json::from_str(include_str!("../../fixtures/actions-job-prestep.json")).unwrap();
+        let report = classify_actions_job(&job).unwrap();
+        assert_eq!(report.status, Status::Hold);
+        assert_eq!(report.signal, "FAILED_WITHOUT_RECORDED_STEPS");
+        assert_eq!(report.recorded_steps, 0);
+        assert!(!report.runner_id_recorded);
+        assert!(!report.root_cause_verified);
+    }
+    #[test]
+    fn actions_job_failure_after_steps_is_distinct() {
+        let job: ActionsJob =
+            serde_json::from_str(include_str!("../../fixtures/actions-job-step-failure.json")).unwrap();
+        let report = classify_actions_job(&job).unwrap();
+        assert_eq!(report.status, Status::Hold);
+        assert_eq!(report.signal, "FAILED_WITH_RECORDED_STEPS");
+        assert!(report.runner_id_recorded);
+        assert_eq!(report.recorded_steps, 1);
+    }
+    #[test]
+    fn actions_job_pending_does_not_infer_failure() {
+        let job = ActionsJob {
+            status: "queued".into(),
+            conclusion: None,
+            runner_id: Some(0),
+            steps: None,
+        };
+        let report = classify_actions_job(&job).unwrap();
+        assert_eq!(report.signal, "NOT_TERMINAL");
+        assert_eq!(report.status, Status::Warn);
+    }
+    #[test]
+    fn actions_job_success_does_not_claim_authentication_or_permission() {
+        let job = ActionsJob {
+            status: "completed".into(),
+            conclusion: Some("success".into()),
+            runner_id: Some(4),
+            steps: Some(vec![]),
+        };
+        let report = classify_actions_job(&job).unwrap();
+        assert_eq!(report.status, Status::Ready);
+        assert!(!report.root_cause_verified);
+    }
+    #[test]
+    fn actions_job_rejects_inconsistent_or_oversized_steps() {
+        let mut job = ActionsJob {
+            status: "completed".into(),
+            conclusion: None,
+            runner_id: Some(0),
+            steps: Some(vec![]),
+        };
+        assert!(classify_actions_job(&job).is_err());
+        job.status = "in_progress".into();
+        job.conclusion = Some("failure".into());
+        assert!(classify_actions_job(&job).is_err());
+        job.status = "completed".into();
+        job.steps = Some(vec![serde_json::Value::Null; 513]);
+        assert!(classify_actions_job(&job).is_err());
+    }
+    #[test]
+    fn actions_job_does_not_copy_attacker_controlled_metadata() {
+        let source = r#"{"status":"completed","conclusion":"failure","runner_id":0,"steps":[],"name":"\\n::error::secret-demo","labels":["secret-demo"],"url":"https://invalid.example/token-demo"}"#;
+        let job: ActionsJob = serde_json::from_str(source).unwrap();
+        let report = classify_actions_job(&job).unwrap();
+        let output = serde_json::to_string(&report).unwrap();
+        assert_eq!(report.schema, ACTIONS_JOB_SCHEMA);
+        assert!(!output.contains("secret-demo"));
+        assert!(!output.contains("token-demo"));
     }
     #[test]
     fn serialization_contract() {
