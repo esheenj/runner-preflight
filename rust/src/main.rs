@@ -117,7 +117,10 @@ fn classify_actions_job(job: &ActionsJob) -> Result<ActionsJobReport, &'static s
             "FAILED_WITH_RECORDED_STEPS",
             "Inspect recorded failed steps and their logs; do not infer a runner-allocation cause.",
         ),
-        ("completed", Some("cancelled" | "skipped" | "timed_out" | "action_required" | "neutral" | "stale")) => (
+        (
+            "completed",
+            Some("cancelled" | "skipped" | "timed_out" | "action_required" | "neutral" | "stale"),
+        ) => (
             Status::Warn,
             "NON_SUCCESSFUL_OR_INCONCLUSIVE",
             "Inspect GitHub's job conclusion and applicable required checks.",
@@ -353,8 +356,7 @@ fn triage_actions_job(path: &Path) -> Result<u8, &'static str> {
     if bytes.len() as u64 > MAX_BYTES {
         return Err("Input file too large");
     }
-    let job: ActionsJob =
-        serde_json::from_slice(&bytes).map_err(|_| "Invalid Actions job JSON")?;
+    let job: ActionsJob = serde_json::from_slice(&bytes).map_err(|_| "Invalid Actions job JSON")?;
     let report = classify_actions_job(&job)?;
     let code = match report.status {
         Status::Ready => 0,
@@ -369,15 +371,21 @@ fn triage_actions_job(path: &Path) -> Result<u8, &'static str> {
 }
 fn run() -> Result<u8, &'static str> {
     let mut a = std::env::args().skip(1);
-    let command = a.next().ok_or("Usage: runner-preflight inspect|actions-job --input FILE --format json|github")?;
+    let command = a
+        .next()
+        .ok_or("Usage: runner-preflight inspect|actions-job --input FILE --format json|github")?;
     if !matches!(command.as_str(), "inspect" | "actions-job")
         || a.next().as_deref() != Some("--input")
     {
-        return Err("Usage: runner-preflight inspect|actions-job --input FILE --format json|github");
+        return Err(
+            "Usage: runner-preflight inspect|actions-job --input FILE --format json|github",
+        );
     }
     let input = a.next().ok_or("Missing input file")?;
     if a.next().as_deref() != Some("--format") {
-        return Err("Usage: runner-preflight inspect|actions-job --input FILE --format json|github");
+        return Err(
+            "Usage: runner-preflight inspect|actions-job --input FILE --format json|github",
+        );
     }
     let format = match a.next().as_deref() {
         Some("json") => OutputFormat::Json,
@@ -385,7 +393,9 @@ fn run() -> Result<u8, &'static str> {
         _ => return Err("Unsupported format for this command"),
     };
     if a.next().is_some() {
-        return Err("Usage: runner-preflight inspect|actions-job --input FILE --format json|github");
+        return Err(
+            "Usage: runner-preflight inspect|actions-job --input FILE --format json|github",
+        );
     }
     match command.as_str() {
         "inspect" => inspect(Path::new(&input), format),
@@ -575,7 +585,8 @@ mod tests {
     #[test]
     fn actions_job_failure_after_steps_is_distinct() {
         let job: ActionsJob =
-            serde_json::from_str(include_str!("../../fixtures/actions-job-step-failure.json")).unwrap();
+            serde_json::from_str(include_str!("../../fixtures/actions-job-step-failure.json"))
+                .unwrap();
         let report = classify_actions_job(&job).unwrap();
         assert_eq!(report.status, Status::Hold);
         assert_eq!(report.signal, "FAILED_WITH_RECORDED_STEPS");
